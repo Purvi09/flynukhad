@@ -1,4 +1,4 @@
-// nukhadv2 server: a thin, cacheable front for OpenStreetMap, Google and Gemini.
+// nukkad server: a thin, cacheable front for OpenStreetMap, Google and Gemini.
 //
 // Keys stay here. The browser only ever sees projected metres, moderated text
 // and proxied photographs.
@@ -20,6 +20,9 @@ import { geocode, shortLabel } from "./geocode";
 import { moderate } from "./moderate";
 import { streetView } from "./streetview";
 import { geminiConfigured } from "./gemini";
+import { gatherHistory } from "./history";
+import { castWitnesses, witnessReply } from "./witnesses";
+import type { Turn, WitnessSpot } from "../shared/history";
 
 const app = new Hono();
 app.use("/api/*", cors());
@@ -158,6 +161,67 @@ app.post("/api/tile", async (c) => {
   }
 });
 
+// ---- the history game ---------------------------------------------------------
+
+/** The pool of cases for a city: real places, with the answer taken out. */
+app.post("/api/history", async (c) => {
+  let centre: LatLon;
+  let radius = 1200;
+  let rounds = 5;
+  try {
+    const body = await c.req.json() as { centre?: LatLon; radius?: number; rounds?: number };
+    centre = { lat: Number(body?.centre?.lat), lon: Number(body?.centre?.lon) };
+    radius = Number(body?.radius) || 1200;
+    rounds = Math.min(24, Math.max(1, Number(body?.rounds) || 5));
+    if (!Number.isFinite(centre.lat) || !Number.isFinite(centre.lon)) throw new Error();
+  } catch {
+    return c.json({ error: "invalid body" }, 400);
+  }
+
+  try {
+    const result = await gatherHistory(centre, radius, rounds);
+    if (!result.ok) return c.json({ error: result.error }, result.status as 422);
+    return c.json({ sites: result.sites, source: result.source });
+  } catch (caught) {
+    return c.json({ error: caught instanceof Error ? caught.message : "Could not gather the city's history." }, 502);
+  }
+});
+
+/** Give this case's witnesses names, faces and voices. */
+app.post("/api/witnesses", async (c) => {
+  let body: { city?: string; spots?: WitnessSpot[] };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "invalid body" }, 400);
+  }
+  const spots = Array.isArray(body.spots) ? body.spots.slice(0, 6) : [];
+  if (spots.length === 0) return c.json({ error: "No witnesses could be placed." }, 422);
+
+  const cast = await castWitnesses(body.city ?? "this city", spots);
+  return c.json(cast);
+});
+
+/** One turn of conversation with one witness. */
+app.post("/api/witness-chat", async (c) => {
+  let body: { witness?: Parameters<typeof witnessReply>[0]; history?: Turn[]; question?: string; told?: boolean };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "invalid body" }, 400);
+  }
+  const question = (body.question ?? "").trim().slice(0, 400);
+  if (!question) return c.json({ error: "Say something." }, 400);
+
+  const reply = await witnessReply(
+    body.witness ?? {},
+    Array.isArray(body.history) ? body.history : [],
+    question,
+    Boolean(body.told),
+  );
+  return c.json(reply);
+});
+
 // ---- memories -----------------------------------------------------------------
 
 app.post("/api/moderate", async (c) => {
@@ -204,6 +268,6 @@ if (existsSync(dist)) {
 }
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {
-  console.log(`nukhadv2 server on http://localhost:${info.port}`);
+  console.log(`nukkad server on http://localhost:${info.port}`);
   console.log(`  gemini: ${geminiConfigured() ? "on" : "off"}  maps: ${process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? "on" : "off"}  client: ${existsSync(dist) ? "dist/" : "vite dev"}`);
 });

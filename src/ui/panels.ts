@@ -1,7 +1,7 @@
 // Panels that take over the screen for a moment: reading a memory, leaving
 // one, the help sheet, the menu. And the chat drawer, which does not.
 
-import { clear, el, timeAgo } from "./dom";
+import { clear, el, formatDistance, timeAgo } from "./dom";
 import type { Memory } from "../net/memories";
 import type { ChatLine } from "../net/chat";
 import { streetViewUrl } from "../net/api";
@@ -167,6 +167,8 @@ export const showHelp = (host: Host, options: {
   onLeaveCity: () => void;
   onClose: () => void;
   counts: { tiles: number; buildings: number; roads: number; memories: number; others: number };
+  /** Everyone else in the city right now, and how far off they are. */
+  people: Array<{ name: string; coat: number; away: number }>;
 }) => {
   const muteButton = el("button", { class: "btn small", type: "button", onclick: () => {
     muteButton.textContent = options.onMute() ? "Sound off" : "Sound on";
@@ -182,10 +184,23 @@ export const showHelp = (host: Host, options: {
       el("kbd", {}, "E"), el("span", {}, "read the memory you are next to"),
       el("kbd", {}, "M"), el("span", {}, "leave a memory where you are"),
       el("kbd", {}, "T"), el("span", {}, "city chat"),
+      el("kbd", {}, "G"), el("span", {}, "the city's history, and who remembers it"),
       el("kbd", {}, "P"), el("span", {}, "the street today, where you are"),
       el("kbd", {}, "Scroll"), el("span", {}, "camera distance"),
       el("kbd", {}, "Esc"), el("span", {}, "release the mouse / this menu"),
     ),
+    options.people.length > 0
+      ? el("div", {},
+        el("p", { class: "eyebrow" }, `Also flying ${options.city.split(",")[0]}`),
+        el("ul", { class: "roster" },
+          ...[...options.people].sort((a, b) => a.away - b.away).slice(0, 12).map((p) =>
+            el("li", {},
+              el("span", { class: "dot", style: `background:#${(p.coat >>> 0).toString(16).padStart(6, "0")}` }),
+              el("span", {}, p.name || "someone"),
+              el("span", { class: "far" }, formatDistance(p.away)),
+            )),
+        ))
+      : null,
     el("div", { class: "note" },
       `${options.city}: ${options.counts.buildings.toLocaleString()} buildings and ${options.counts.roads.toLocaleString()} streets loaded across ${options.counts.tiles} tiles. `,
       `${options.counts.memories} ${options.counts.memories === 1 ? "memory" : "memories"} here, ${options.counts.others} other ${options.counts.others === 1 ? "person" : "people"} flying.`),

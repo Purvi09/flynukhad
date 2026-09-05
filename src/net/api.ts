@@ -1,6 +1,7 @@
 // The server, from the browser's side.
 
 import type { CityData, LatLon, TileData } from "@shared/geo";
+import type { Site, Turn, Witness, WitnessSpot } from "@shared/history";
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message); }
@@ -37,3 +38,19 @@ export const moderateMemory = async (input: { text: string; place: string; city:
 };
 
 export const streetViewUrl = (lat: number, lon: number) => `/api/streetview?lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}`;
+
+// ---- the history game -------------------------------------------------------------
+
+/** The pool of cases for a city. Wikipedia is slow the first time; it is cached after. */
+export const fetchHistory = (centre: LatLon, radius: number, rounds = 12) =>
+  post<{ sites: Site[]; source: string }>("/api/history", { centre, radius, rounds }, 90_000);
+
+export const castWitnesses = (city: string, spots: WitnessSpot[]) =>
+  post<{ witnesses: Witness[]; source: string }>("/api/witnesses", { city, spots }, 40_000);
+
+export const askWitness = (input: {
+  witness: { name: string; role: string; standing: string; testimony: string; opener: string; sentBy: string | null; pointer: string | null };
+  history: Turn[];
+  question: string;
+  told: boolean;
+}) => post<{ reply: string; revealed: boolean; source: string }>("/api/witness-chat", input, 30_000);

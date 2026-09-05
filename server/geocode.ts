@@ -4,7 +4,7 @@ import type { LatLon } from "../shared/geo";
 
 export type Place = { centre: LatLon; label: string };
 
-const UA = "nukhadv2/0.2 (educational project)";
+const UA = "nukkad/0.2 (educational project)";
 const MAPS_KEY = () => process.env.GOOGLE_MAPS_API_KEY ?? process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 /**

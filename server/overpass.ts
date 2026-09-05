@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import type { Bbox } from "../shared/geo";
 
-const UA = "nukhadv2/0.2 (educational project; contact via repository)";
+const UA = "nukkad/0.2 (educational project; contact via repository)";
 
 /**
  * Public Overpass servers, in the order they are asked. The main service is

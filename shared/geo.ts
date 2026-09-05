@@ -1,4 +1,4 @@
-// Shared geometry for nukhadv2.
+// Shared geometry for nukkad.
 //
 // Everything the client draws is in *metres relative to the city centre*: x east,
 // y south. The server projects once; the browser never touches lat/lon except to

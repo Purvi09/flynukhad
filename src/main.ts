@@ -1,4 +1,4 @@
-// nukhadv2: fly a real city, find the memories people left where they
+// nukkad: fly a real city, find the memories people left where they
 // happened, leave your own.
 //
 // This file wires the pieces together. Each piece knows nothing about the
@@ -19,7 +19,11 @@ import { SceneView, AFTERNOON } from "./scene/renderer";
 import { allMeshes, loadLantern, loadPod, loadTree, paintedPod, preparedLantern } from "./scene/models";
 import { Beacons } from "./scene/beacons";
 import { Others } from "./scene/others";
+import { WitnessMarks } from "./scene/witnessMarks";
 import { TileStreamer } from "./world/tiles";
+import { HistoryGame } from "./game/cases";
+import { showCase, showScore, talkToWitness } from "./ui/history";
+import { WITNESS_WITHIN_M } from "@shared/history";
 import { Pod } from "./player/pod";
 import { FollowCamera } from "./player/camera";
 import { Boot, type BootChoice } from "./ui/boot";
@@ -106,6 +110,8 @@ const startSession = (
   view.scene.add(beacons.group);
   const others = new Others(models.pod);
   view.scene.add(others.group);
+  const witnessMarks = new WitnessMarks(tiles.world);
+  view.scene.add(witnessMarks.group);
   const camera = new FollowCamera(view.aspect);
 
   // input and ui
@@ -158,6 +164,64 @@ const startSession = (
   })).then((leave) => cleanups.push(leave));
   cleanups.push(watchChat(slug, (lines) => chat.set(lines)));
 
+  // the history game
+  const game = new HistoryGame(city);
+  let loadingCase = false;
+  let nearWitness: ReturnType<typeof witnessMarks.nearest> = null;
+
+  /** Who sent the player to this witness, so the name means something to them. */
+  const sentBy = (id: string) => {
+    const run = game.current;
+    if (!run) return null;
+    const at = run.witnesses.findIndex((w) => w.witness.id === id);
+    return at > 0 ? run.witnesses[at - 1].witness.name : null;
+  };
+
+  const drawWitnesses = () => {
+    const run = game.current;
+    if (!run || run.solved) { witnessMarks.clear(); return; }
+    witnessMarks.set(run.witnesses);
+  };
+
+  /** Start the next case, or show the score if the set is finished. */
+  const nextCase = async () => {
+    if (loadingCase) return;
+    loadingCase = true;
+    hud.setStatus("Reading what happened here…");
+    try {
+      await game.load();
+      const run = await game.next();
+      if (!run) {
+        openPanel(() => showScore(host, {
+          found: game.found, total: game.total, city: city.label.split(",")[0],
+          onAgain: () => { game.reset(); void nextCase(); },
+          onClose: dismiss,
+        }));
+        return;
+      }
+      drawWitnesses();
+      openSound();
+      openPanel(() => openCase());
+    } catch (caught) {
+      hud.toast(caught instanceof Error ? caught.message : "Could not gather the city's history.", true, 6000);
+    } finally {
+      loadingCase = false;
+      hud.setStatus("");
+    }
+  };
+
+  const openCase = () => {
+    const run = game.current;
+    if (!run) return () => {};
+    return showCase(host, run, {
+      round: game.roundNumber, total: game.total, found: game.found,
+      at: { x: pod.position.x, y: pod.position.z },
+      onGiveUp: () => { game.giveUp(); witnessMarks.clear(); openPanel(() => openCase()); },
+      onNext: () => { void nextCase(); },
+      onClose: dismiss,
+    });
+  };
+
   // the place you are at, in words
   const whereAmI = () => {
     const x = pod.position.x, z = pod.position.z;
@@ -184,6 +248,24 @@ const startSession = (
   const handleAction = (action: Action) => {
     switch (action) {
       case "read": {
+        // a witness in reach takes priority: they are why you flew here
+        if (nearWitness) {
+          const run = game.current;
+          const state = run?.witnesses.find((w) => w.witness.id === nearWitness!.id);
+          if (state && !state.unlocked) {
+            hud.toast(`${state.witness.name} has nothing for you yet. Ask the others first.`, false, 4000);
+            return;
+          }
+          if (state) {
+            openSound();
+            openPanel(() => talkToWitness(host, state, {
+              sentBy: sentBy(state.witness.id),
+              onTold: () => { game.tell(state.witness.id); witnessMarks.refresh(run!.witnesses); },
+              onClose: dismiss,
+            }));
+            return;
+          }
+        }
         if (!nearMemory) return;
         const memory = nearMemory;
         openSound();
@@ -239,9 +321,18 @@ const startSession = (
         openPanel(() => showHelp(host, {
           city: city.label, muted: soundMuted(), onMute: toggleMuted,
           counts: { ...tiles.counts, memories: memories.length, others: peopleNow.length },
+          people: peopleNow.map((p) => ({
+            name: p.name, coat: p.coat,
+            away: Math.hypot(p.x - pod.position.x, p.y - pod.position.z),
+          })),
           onLeaveCity: () => endSession(),
           onClose: dismiss,
         }));
+        return;
+      }
+      case "history": {
+        if (game.current && !game.current.solved) { openPanel(() => openCase()); return; }
+        void nextCase();
         return;
       }
       case "mute": {
@@ -279,7 +370,16 @@ const startSession = (
     tiles.update(dt, pod.position.x, pod.position.z, elapsed);
     beacons.update(elapsed, pod.position.x, pod.position.z);
     others.update(dt);
+    witnessMarks.update(elapsed, pod.position.x, pod.position.z);
     camera.update(dt, pod.position, pod.quaternion, pod.speed01);
+
+    // the history game: who is in earshot, and whether this is the place
+    nearWitness = witnessMarks.nearest(pod.position.x, pod.position.y, pod.position.z, WITNESS_WITHIN_M);
+    if (game.checkFound(pod.position.x, pod.position.z)) {
+      postSound();
+      witnessMarks.clear();
+      openPanel(() => openCase());
+    }
 
     const near = beacons.nearest(pod.position.x, pod.position.y, pod.position.z);
     if (near && near.id !== announced) { nearSound(); announced = near.id; }
@@ -295,7 +395,9 @@ const startSession = (
     setHum(pod.speed01, pod.boosting);
     hud.setPointerHint(!input.locked && !closePanel && !touch && !chat.isOpen);
     if (!closePanel) {
-      hud.prompt(nearMemory
+      hud.prompt(nearWitness
+        ? `<kbd>E</kbd> talk to <b>${escapeHtml(nearWitness.name)}</b>`
+        : nearMemory
         ? `<kbd>E</kbd> read what <b>${escapeHtml(nearMemory.by || "someone")}</b> left here`
         : pod.speed01 < 0.08 ? `<kbd>M</kbd> leave a memory ${where.place ? `at ${escapeHtml(where.place)}` : where.street ? `on ${escapeHtml(where.street)}` : "here"}` : null);
     } else hud.prompt(null);
@@ -312,18 +414,38 @@ const startSession = (
       z: pod.position.z,
       memories: beacons.positions(),
       others: others.positions(),
+      witnesses: witnessMarks.positions(),
       roads: tiles.world.segmentsNear(pod.position.x, pod.position.z, 430).map((s) => ({ x1: s.x1, z1: s.z1, x2: s.x2, z2: s.z2, major: MAJOR.has(s.kind) })),
       nearest,
     });
     view.render(camera.camera);
   };
 
+  /**
+   * What the readout points at. While a case is running, the witness who will
+   * actually talk to you matters more than the nearest memory.
+   */
   const nearestMemory = () => {
-    let best: { dist: number; bearing: number } | null = null;
+    const bearingTo = (x: number, z: number) => {
+      const dx = x - pod.position.x, dz = z - pod.position.z;
+      return { dist: Math.hypot(dx, dz), bearing: Math.atan2(dx, -dz) };
+    };
+
+    const run = game.current;
+    if (run && !run.solved) {
+      let best: { dist: number; bearing: number; label: string } | null = null;
+      for (const w of witnessMarks.positions()) {
+        if (!w.unlocked || w.told) continue;
+        const at = bearingTo(w.x, w.z);
+        if (!best || at.dist < best.dist) best = { ...at, label: "witness" };
+      }
+      if (best) return best;
+    }
+
+    let best: { dist: number; bearing: number; label: string } | null = null;
     for (const m of beacons.positions()) {
-      const dx = m.x - pod.position.x, dz = m.z - pod.position.z;
-      const d = Math.hypot(dx, dz);
-      if (!best || d < best.dist) best = { dist: d, bearing: Math.atan2(dx, -dz) };
+      const at = bearingTo(m.x, m.z);
+      if (!best || at.dist < best.dist) best = { ...at, label: "nearest memory" };
     }
     return best;
   };
@@ -336,6 +458,8 @@ const startSession = (
   loop.start();
   hud.toast(`${city.label}. ${tiles.counts.buildings.toLocaleString()} buildings raised. ${touch ? "Drag to look, stick to move." : "Click to take the controls."}`, false, 5000);
   if (arrival) hud.toast(`${arrival.by || "Someone"}'s memory is the lantern ahead of you.`, false, 6000);
+  // The history game is the least discoverable thing here, so say so once.
+  else setTimeout(() => hud.toast("Press G to be given a piece of this city's history to find.", false, 7000), 6000);
 
   const endSession = () => {
     loop.stop();
@@ -345,6 +469,7 @@ const startSession = (
     hud.root.remove();
     touch?.remove();
     chat.remove();
+    witnessMarks.clear();
     view.renderer.dispose();
     view.scene.clear();
     setHum(0, false);
@@ -360,6 +485,6 @@ const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", 
 
 // ---- go ----------------------------------------------------------------------------------
 
-if (!firebaseReady) console.info("nukhad: Firebase is not configured; memories stay in this browser.");
+if (!firebaseReady) console.info("nukkad: Firebase is not configured; memories stay in this browser.");
 void showBoot();
 export { session };

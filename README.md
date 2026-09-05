@@ -1,7 +1,7 @@
-# Nukhad v2
+# Nukkad
 
-*Nukhad* — the street corner. The tea stall, the bench, the place a
-neighbourhood gathers and stories go round.
+*Nukkad* — the street corner. The tea stall, the bench, the place a
+neighbourhood gathers and stories go round. This one you fly over.
 
 Fly any real city, drawn street for street from open map data. Find the
 memories people left where they happened, and leave your own.
@@ -30,7 +30,22 @@ with the original 2D game show up too: they are found by latitude and
 longitude, not by whatever a geocoder called the city that day.
 
 **A city you share.** Everyone in the same city sees each other's pods with
-names above them, and there is a text channel per city.
+names above them, and there is a text channel per city. `H` lists who else is
+up there and how far off they are.
+
+**A history game, played by asking.** Press `G` and the city deals you a case:
+a real place something happened, taken from Wikipedia's geolocated articles,
+with its name and every giveaway taken out. Four people are standing on real
+streets nearby, and each knows one piece of where it is — what happened, which
+part of the city, what stands around it, and which landmark it sits beside. Fly
+to one, press `E`, and *ask*: they answer in character and will not tell you
+anything you have not actually asked for. Each points you to the next by name
+and street. Exactly one of them is honestly mistaken, and it is never the first.
+
+The geometry is worked out in the browser from the streets you are looking at,
+so a bearing or a distance a witness gives you is always true of the map. Only
+the phrasing is Gemini's, and every step falls back to a plain, true sentence
+when the model is unavailable — so the game is playable without a key.
 
 **Moderated before anyone sees it.** Gemini checks every memory for surnames,
 contact details, private addresses and abuse, and looks at every photograph
@@ -76,6 +91,7 @@ clear message.
 | `E` | read the memory you are next to |
 | `M` | leave a memory where you are |
 | `T` | city chat |
+| `G` | the city's history: a case, and the people who know it |
 | `P` | the Street View photograph of where you are |
 | `H` | help, sound, change city |
 | Scroll | camera distance |
@@ -146,7 +162,7 @@ npm start                         # serves dist/ and /api on $PORT (8787)
 Or with the Dockerfile on Cloud Run:
 
 ```bash
-gcloud run deploy nukhad --source . --region asia-south1 --allow-unauthenticated \
+gcloud run deploy nukkad --source . --region asia-south1 --allow-unauthenticated \
   --set-env-vars "GEMINI_API_KEY=…,GOOGLE_MAPS_API_KEY=…" \
   --set-build-env-vars "$(grep '^VITE_' .env | tr '\n' ',' | sed 's/,$//')"
 ```

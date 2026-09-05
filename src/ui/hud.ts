@@ -15,8 +15,9 @@ export type HudState = {
   z: number;
   memories: Array<{ x: number; z: number }>;
   others: Array<{ x: number; z: number }>;
+  witnesses: Array<{ x: number; z: number; unlocked: boolean; told: boolean }>;
   roads: Array<{ x1: number; z1: number; x2: number; z2: number; major: boolean }>;
-  nearest: { dist: number; bearing: number } | null;
+  nearest: { dist: number; bearing: number; label: string } | null;
 };
 
 const MINIMAP_RANGE = 420;
@@ -68,7 +69,7 @@ export class Hud {
       el("div", { class: "keys" },
         el("div", {}, el("kbd", {}, "W S"), " thrust ", el("kbd", {}, "A D"), " strafe"),
         el("div", {}, el("kbd", {}, "Space"), " rise ", el("kbd", {}, "C"), " dive ", el("kbd", {}, "Shift"), " boost"),
-        el("div", {}, el("kbd", {}, "M"), " leave a memory ", el("kbd", {}, "T"), " chat ", el("kbd", {}, "H"), " help"),
+        el("div", {}, el("kbd", {}, "M"), " memory ", el("kbd", {}, "G"), " history ", el("kbd", {}, "T"), " chat ", el("kbd", {}, "H"), " help"),
       ),
       this.toasts,
       this.pointerHint,
@@ -98,7 +99,7 @@ export class Hud {
     this.altEl.textContent = `${Math.round(s.alt)} m`;
     this.speedEl.textContent = `${Math.round(s.speed * 3.6)} km/h`;
     this.nearestEl.textContent = s.nearest
-      ? `nearest memory ${s.nearest.dist < 1000 ? `${Math.round(s.nearest.dist)} m` : `${(s.nearest.dist / 1000).toFixed(1)} km`} ${arrow(s.nearest.bearing + s.yaw)}`
+      ? `${s.nearest.label} ${s.nearest.dist < 1000 ? `${Math.round(s.nearest.dist)} m` : `${(s.nearest.dist / 1000).toFixed(1)} km`} ${arrow(s.nearest.bearing + s.yaw)}`
       : "";
     this.drawCompass(s);
     this.mapClock += dt;
@@ -188,6 +189,18 @@ export class Hud {
       g.beginPath();
       g.arc(m.x * scale, m.z * scale, 4, 0, Math.PI * 2);
       g.fill();
+    }
+    // the people who know something: rose if they will talk, faded once they have
+    for (const w of s.witnesses) {
+      g.fillStyle = w.told ? "rgba(212,112,143,0.35)" : w.unlocked ? "#ff9ec0" : "rgba(159,178,204,0.6)";
+      g.beginPath();
+      g.arc(w.x * scale, w.z * scale, 5, 0, Math.PI * 2);
+      g.fill();
+      if (w.unlocked && !w.told) {
+        g.strokeStyle = "rgba(255,255,255,0.85)";
+        g.lineWidth = 1.5;
+        g.stroke();
+      }
     }
     g.restore();
 
