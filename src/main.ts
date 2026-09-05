@@ -8,7 +8,7 @@
 import "./ui/styles.css";
 import * as THREE from "three";
 import { citySlug, toLatLon, toMetres, WORLD_LIMIT_M, type CityData } from "@shared/geo";
-import { Input, type Action } from "./engine/input";
+import { Input, type Action, type Intent } from "./engine/input";
 import { Loop } from "./engine/loop";
 import { buildCity } from "./net/api";
 import { firebaseReady, currentUid } from "./net/firebase";
@@ -20,14 +20,16 @@ import { allMeshes, loadLantern, loadPod, loadTree, paintedPod, preparedLantern 
 import { Beacons } from "./scene/beacons";
 import { Others } from "./scene/others";
 import { WitnessMarks } from "./scene/witnessMarks";
+import { Reveal } from "./scene/reveal";
 import { TileStreamer } from "./world/tiles";
 import { HistoryGame } from "./game/cases";
-import { showCase, showScore, talkToWitness } from "./ui/history";
+import { openingCase, showCase, showScore, talkToWitness } from "./ui/history";
 import { WITNESS_WITHIN_M } from "@shared/history";
 import { Pod } from "./player/pod";
 import { FollowCamera } from "./player/camera";
 import { Boot, type BootChoice } from "./ui/boot";
 import { Hud } from "./ui/hud";
+import { formatDistance } from "./ui/dom";
 import { ChatDrawer, composeMemory, readMemory, showHelp, showStreetPhoto } from "./ui/panels";
 import { TouchControls, isTouchDevice } from "./ui/touch";
 import { bumpSound, clickSound, initSound, nearSound, openSound, postSound, setHum, soundMuted, toggleMuted } from "./audio/sound";
@@ -112,6 +114,8 @@ const startSession = (
   view.scene.add(others.group);
   const witnessMarks = new WitnessMarks(tiles.world);
   view.scene.add(witnessMarks.group);
+  const reveal = new Reveal();
+  view.scene.add(reveal.group);
   const camera = new FollowCamera(view.aspect);
 
   // input and ui
@@ -167,6 +171,9 @@ const startSession = (
   // the history game
   const game = new HistoryGame(city);
   let loadingCase = false;
+  /** Locking in is a one-way door, so the first L only arms it. */
+  const ARM_MS = 4000;
+  let armedUntil = 0;
   let nearWitness: ReturnType<typeof witnessMarks.nearest> = null;
 
   /** Who sent the player to this witness, so the name means something to them. */
@@ -183,17 +190,43 @@ const startSession = (
     witnessMarks.set(run.witnesses);
   };
 
-  /** Start the next case, or show the score if the set is finished. */
+  /**
+   * Start the next case, or show the score if the set is finished.
+   *
+   * The wait is shown as it happens: the file panel goes up first and each
+   * stage is ticked off as that piece of work actually returns, so pressing G
+   * never looks like it did nothing.
+   */
   const nextCase = async () => {
     if (loadingCase) return;
     loadingCase = true;
+    hideAnswer();
     hud.setStatus("Reading what happened here…");
+    // assigned synchronously by openPanel, below
+    let opening!: ReturnType<typeof openingCase>;
+    openPanel(() => {
+      opening = openingCase(host, {
+        city: city.label.split(",")[0],
+        round: game.roundNumber + 1,
+      });
+      return opening.close;
+    });
     try {
+      // the slow one, and only on the first case in a city
+      if (!game.ready) opening.step("record");
       await game.load();
+
+      opening.step("deal");
+      opening.step("streets");
+      // give the two quick stages a beat each, or they flash past unread
+      await new Promise((done) => setTimeout(done, 500));
+      opening.step("cast");
+
       const run = await game.next();
       if (!run) {
         openPanel(() => showScore(host, {
-          found: game.found, total: game.total, city: city.label.split(",")[0],
+          found: game.found, total: game.total, score: game.score,
+          city: city.label.split(",")[0],
           onAgain: () => { game.reset(); void nextCase(); },
           onClose: dismiss,
         }));
@@ -202,8 +235,12 @@ const startSession = (
       drawWitnesses();
       openSound();
       openPanel(() => openCase());
+      // the key only matters from here on, so this is where it is said
+      hud.toast("When you think you are standing on it, press L to lock your answer in.", false, 7000);
     } catch (caught) {
-      hud.toast(caught instanceof Error ? caught.message : "Could not gather the city's history.", true, 6000);
+      const message = caught instanceof Error ? caught.message : "Could not gather the city's history.";
+      // the panel stays up and says what went wrong, rather than vanishing
+      opening.fail(message);
     } finally {
       loadingCase = false;
       hud.setStatus("");
@@ -214,12 +251,34 @@ const startSession = (
     const run = game.current;
     if (!run) return () => {};
     return showCase(host, run, {
-      round: game.roundNumber, total: game.total, found: game.found,
+      round: game.roundNumber, total: game.total, found: game.found, score: game.score,
       at: { x: pod.position.x, y: pod.position.z },
-      onGiveUp: () => { game.giveUp(); witnessMarks.clear(); openPanel(() => openCase()); },
+      onGiveUp: () => { game.giveUp(); witnessMarks.clear(); showAnswer(); openPanel(() => openCase()); },
       onNext: () => { void nextCase(); },
       onClose: dismiss,
     });
+  };
+
+  /**
+   * Answer the case where you are standing. Irreversible, so it takes two
+   * presses: the first arms it and says so, the second commits.
+   */
+  const lockIn = () => {
+    const run = game.current;
+    if (!run || run.solved) return;
+    if (Date.now() > armedUntil) {
+      armedUntil = Date.now() + ARM_MS;
+      hud.toast("Press L again to lock this spot in as your answer.", false, ARM_MS);
+      return;
+    }
+    armedUntil = 0;
+    game.lockIn(pod.position.x, pod.position.z);
+    postSound();
+    witnessMarks.clear();
+    showAnswer();
+    hud.toast(`${formatDistance(run.away ?? 0)} out · +${run.points}`, false, 6000);
+    // let the camera arrive and the pole land before the file goes up over it
+    setTimeout(() => { if (game.current === run) openPanel(() => openCase()); }, 2400);
   };
 
   // the place you are at, in words
@@ -335,6 +394,10 @@ const startSession = (
         void nextCase();
         return;
       }
+      case "lock": {
+        lockIn();
+        return;
+      }
       case "mute": {
         hud.toast(toggleMuted() ? "Sound off" : "Sound on");
         return;
@@ -359,27 +422,29 @@ const startSession = (
   cleanups.push(() => canvas.removeEventListener("click", onClick));
 
   // the loop
+  /** Hands off the controls: what the pod is given while the answer is up. */
+  const STILL: Intent = { thrust: 0, strafe: 0, rise: 0, yaw: 0, pitch: 0, boost: false };
   let elapsed = 0;
   let hudClock = 0;
   let where = { street: null as string | null, place: null as string | null };
   const step = (dt: number) => {
     elapsed += dt;
+    // While the answer is up the camera is off the pod, so flying would be
+    // flying blind: the controls go quiet until the next case is dealt.
+    const revealing = reveal.frame !== null;
     const intent = input.read(dt);
-    pod.step(dt, intent, tiles.world, elapsed);
+    pod.step(dt, revealing ? STILL : intent, tiles.world, elapsed);
     if (pod.bumped) { bumpSound(); camera.kick(0.6); }
     tiles.update(dt, pod.position.x, pod.position.z, elapsed);
     beacons.update(elapsed, pod.position.x, pod.position.z);
     others.update(dt);
-    witnessMarks.update(elapsed, pod.position.x, pod.position.z);
+    witnessMarks.update(dt, elapsed, pod.position.x, pod.position.z);
+    reveal.update(elapsed);
     camera.update(dt, pod.position, pod.quaternion, pod.speed01);
 
-    // the history game: who is in earshot, and whether this is the place
+    // the history game: who is in earshot. The place itself is never given
+    // away by flying over it — you have to say that this is the spot.
     nearWitness = witnessMarks.nearest(pod.position.x, pod.position.y, pod.position.z, WITNESS_WITHIN_M);
-    if (game.checkFound(pod.position.x, pod.position.z)) {
-      postSound();
-      witnessMarks.clear();
-      openPanel(() => openCase());
-    }
 
     const near = beacons.nearest(pod.position.x, pod.position.y, pod.position.z);
     if (near && near.id !== announced) { nearSound(); announced = near.id; }
@@ -394,11 +459,22 @@ const startSession = (
     view.follow(pod.position.x, pod.position.y, pod.position.z, elapsed);
     setHum(pod.speed01, pod.boosting);
     hud.setPointerHint(!input.locked && !closePanel && !touch && !chat.isOpen);
+    const answering = !!game.current && !game.current.solved;
+    const showing = reveal.frame !== null;
+    touch?.setLock(answering);
+    hud.setLockKey(answering);
     if (!closePanel) {
-      hud.prompt(nearWitness
+      hud.prompt(showing
+        // the controls are handed to the reveal until the next case is dealt
+        ? `<kbd>G</kbd> the case file, and the next one`
+        : nearWitness
         ? `<kbd>E</kbd> talk to <b>${escapeHtml(nearWitness.name)}</b>`
         : nearMemory
         ? `<kbd>E</kbd> read what <b>${escapeHtml(nearMemory.by || "someone")}</b> left here`
+        : answering
+        ? Date.now() < armedUntil
+          ? `<kbd>L</kbd> again to lock in <b>${escapeHtml(where.place ?? where.street ?? "this spot")}</b> as your answer`
+          : `<kbd>L</kbd> lock in this spot as your answer`
         : pod.speed01 < 0.08 ? `<kbd>M</kbd> leave a memory ${where.place ? `at ${escapeHtml(where.place)}` : where.street ? `on ${escapeHtml(where.street)}` : "here"}` : null);
     } else hud.prompt(null);
 
@@ -415,10 +491,42 @@ const startSession = (
       memories: beacons.positions(),
       others: others.positions(),
       witnesses: witnessMarks.positions(),
+      answer: answerOnMap(),
       roads: tiles.world.segmentsNear(pod.position.x, pod.position.z, 430).map((s) => ({ x1: s.x1, z1: s.z1, x2: s.x2, z2: s.z2, major: MAJOR.has(s.kind) })),
       nearest,
     });
     view.render(camera.camera);
+  };
+
+  /**
+   * Put the answer on the ground and hand the camera to it: a gold pole where
+   * it really was, your post where you said it was, dashes between them.
+   */
+  const showAnswer = () => {
+    const run = game.current;
+    if (!run || !run.solved) return;
+    reveal.show(
+      { x: run.site.x, z: run.site.y, title: run.site.title },
+      run.guess ? { x: run.guess.x, z: run.guess.y } : null,
+    );
+    camera.hold(reveal.frame);
+  };
+
+  /** Back to the pod, and clear the ground, when the next case is dealt. */
+  const hideAnswer = () => {
+    reveal.clear();
+    camera.hold(null);
+  };
+
+  /**
+   * The closed case, for the minimap: where it really was, and the spot you
+   * called it from. Nothing until the answer has been given away.
+   */
+  const answerOnMap = () => {
+    const run = game.current;
+    // giving up shows the place too — that is what giving up buys you
+    if (!run || !run.solved) return null;
+    return { x: run.site.x, z: run.site.y, from: run.guess ? { x: run.guess.x, z: run.guess.y } : null };
   };
 
   /**
@@ -470,6 +578,7 @@ const startSession = (
     touch?.remove();
     chat.remove();
     witnessMarks.clear();
+    reveal.clear();
     view.renderer.dispose();
     view.scene.clear();
     setHum(0, false);

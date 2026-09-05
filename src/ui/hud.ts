@@ -17,6 +17,8 @@ export type HudState = {
   others: Array<{ x: number; z: number }>;
   witnesses: Array<{ x: number; z: number; unlocked: boolean; told: boolean }>;
   roads: Array<{ x1: number; z1: number; x2: number; z2: number; major: boolean }>;
+  /** Once a case is answered: the real place, and the spot you called it from. */
+  answer: { x: number; z: number; from: { x: number; z: number } | null } | null;
   nearest: { dist: number; bearing: number; label: string } | null;
 };
 
@@ -35,10 +37,14 @@ export class Hud {
   private promptEl: HTMLElement;
   private statusEl: HTMLElement;
   private pointerHint: HTMLElement;
+  private lockKey: HTMLElement;
   private toasts: HTMLElement;
   private mapClock = 0;
 
   constructor(onPointerHint: () => void) {
+    // Only on screen while a case is open: before that there is nothing to lock.
+    this.lockKey = el("div", { class: "key-lock" }, el("kbd", {}, "L"), " lock in your answer");
+    this.lockKey.style.display = "none";
     this.cityEl = el("div", { class: "city" });
     this.streetEl = el("div", { class: "street" });
     this.placeEl = el("div", { class: "place" });
@@ -70,6 +76,7 @@ export class Hud {
         el("div", {}, el("kbd", {}, "W S"), " thrust ", el("kbd", {}, "A D"), " strafe"),
         el("div", {}, el("kbd", {}, "Space"), " rise ", el("kbd", {}, "C"), " dive ", el("kbd", {}, "Shift"), " boost"),
         el("div", {}, el("kbd", {}, "M"), " memory ", el("kbd", {}, "G"), " history ", el("kbd", {}, "T"), " chat ", el("kbd", {}, "H"), " help"),
+        this.lockKey,
       ),
       this.toasts,
       this.pointerHint,
@@ -77,6 +84,9 @@ export class Hud {
   }
 
   setPointerHint(show: boolean) { this.pointerHint.style.display = show ? "" : "none"; }
+
+  /** The lock key is only listed while there is a case open to answer. */
+  setLockKey(show: boolean) { this.lockKey.style.display = show ? "" : "none"; }
 
   setStatus(text: string) { this.statusEl.textContent = text; }
 
@@ -150,7 +160,11 @@ export class Hud {
     const g = this.minimap.getContext("2d")!;
     const size = this.minimap.width;
     const c = size / 2;
-    const scale = c / MINIMAP_RANGE;
+    // While the answer is up, the map pulls back until both ends of it fit.
+    const reach = s.answer
+      ? Math.max(Math.hypot(s.answer.x - s.x, s.answer.z - s.z) * 1.2, MINIMAP_RANGE)
+      : MINIMAP_RANGE;
+    const scale = c / reach;
     g.clearRect(0, 0, size, size);
     g.save();
     g.beginPath();
@@ -201,6 +215,38 @@ export class Hud {
         g.lineWidth = 1.5;
         g.stroke();
       }
+    }
+    // the answer, once it has been given away: a dotted line from where you
+    // called it to where it actually was
+    if (s.answer) {
+      const from = s.answer.from ?? { x: s.x, z: s.z };
+      g.setLineDash([6, 6]);
+      g.strokeStyle = "rgba(255,176,71,0.85)";
+      g.lineWidth = 2;
+      g.beginPath();
+      g.moveTo(from.x * scale, from.z * scale);
+      g.lineTo(s.answer.x * scale, s.answer.z * scale);
+      g.stroke();
+      g.setLineDash([]);
+
+      // where you said it was
+      g.strokeStyle = "rgba(255,255,255,0.7)";
+      g.lineWidth = 2;
+      g.beginPath();
+      g.arc(from.x * scale, from.z * scale, 5, 0, Math.PI * 2);
+      g.stroke();
+
+      // where it was: a gold ring with a cross in it, unmistakably not a memory
+      const ax = s.answer.x * scale, az = s.answer.z * scale;
+      g.strokeStyle = "#ffb347";
+      g.lineWidth = 2.5;
+      g.beginPath();
+      g.arc(ax, az, 9, 0, Math.PI * 2);
+      g.stroke();
+      g.beginPath();
+      g.moveTo(ax - 5, az); g.lineTo(ax + 5, az);
+      g.moveTo(ax, az - 5); g.lineTo(ax, az + 5);
+      g.stroke();
     }
     g.restore();
 

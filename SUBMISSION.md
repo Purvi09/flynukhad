@@ -95,14 +95,37 @@ three.js for rendering (one merged mesh per feature class per tile, vertex colou
 
 ## Progress Detail on your project delivery
 
-The game is built end to end — city building, memories, the history game, presence and chat all run locally. What is left is verification and deployment:
+The project is built, deployed and playable end to end: cities build from any place name, memories can be left and found, the history game deals cases and the witnesses answer, and everyone in a city sees each other and can chat. It is live on Cloud Run at https://nukkad-700773700612.asia-south1.run.app. What is left is finishing touches, not features:
 
-1. Verify multiplayer visibility. Open the same city in two browsers and confirm each pod appears to the other, with the right name above it, moving as it moves and disappearing when the tab closes; and that the per-city chat carries a message both ways.
-2. Verify the history game end to end. Confirm the clue text is actually readable in the case panel with the answer properly removed, that all four witnesses appear on the street and unlock in order, that their testimony reads correctly, and that flying to the site closes the case.
-3. Capture the two missing screenshots — a case panel with its witnesses, and a conversation with one on the street.
-4. Commit and push the history game (`server/history.ts`, `server/witnesses.ts`, `shared/history.ts`, `src/game/`, `src/world/witnesses.ts`, `src/ui/history.ts`, `src/scene/witnessMarks.ts`) and the new landing screen.
-5. Deploy to Cloud Run with `gcloud run deploy --source .`, set the Gemini and Maps keys, and deploy the Firestore rules and indexes.
-6. Repeat checks 1 and 2 against the deployed URL, since presence and chat depend on Firestore rules that only matter once it is live.
+1. The witnesses in the history game stand still. They are meant to be people on a street, so they should walk a short beat along the pavement they were placed on, turn to face you as you come near, and stop while they are talking to you. Target: 8 September 2026.
+
+2. Their markers need tidying with them. The column of light above each witness is what you navigate by from a distance, and it has to track them as they move, fade in properly rather than pop in at range, and stay readable against a bright sky. The name label should follow the same movement. Target: 8 September 2026.
+
+3. A last pass over the clue text so every case reads cleanly, and a check that no case ever leaves the answer in the clue. Target: 9 September 2026.
+
+4. Two screenshots for the write-up: a case panel with its four witnesses, and a conversation with one of them on the street. Target: 9 September 2026.
+
+5. Final redeploy and a full playthrough on the live URL in two browsers, to confirm presence, chat and a complete case after the changes above. Target: 10 September 2026.
+
+## Deployed App Details — how to access and test
+
+Open the link, type a city and press Enter. Any real city works; Old Delhi, Lisbon and Bengaluru are good ones to try. The city builds in ten to thirty seconds, then you are flying.
+
+Flying: move the mouse to point the nose, W and S to thrust, A and D to strafe, Space and C to rise and dive, Shift to boost. H is help, P is the Street View photograph of wherever you are. Click once on the page first so the mouse is captured; Esc releases it.
+
+Three things to test:
+
+1. Leave a memory. Press M anywhere, write a line about the place below you, add a photo if you like, and leave it. It becomes a lantern with a beam of light. Fly away, turn round, and find it again; hover beside it and press E to read it. Every memory is checked by Gemini before it is stored, so a phone number or a surname will be refused or quietly removed.
+
+2. Find a piece of the city's history. Press G. You get a clue with the name taken out, and four people standing on real streets. Fly to the nearest, hover within thirty metres, and talk to them in your own words — ask where it is, when it happened, what is nearby. Each one tells you one piece and names the next. Fly within forty-five metres of the place and the case closes. One witness per case is honestly mistaken, so cross-check what they tell you against the map.
+
+3. See other people. Open the same city in a second browser window with a different name. Each pod appears to the other with its name above it, moving in real time, and the per-city chat, on T, carries messages between them.
+
+Everything degrades rather than breaking: without a key or a signed-in Firebase, memories are kept in browser storage and the witnesses keep their true testimony without the character writing.
+
+## Deployed App Link
+
+https://nukkad-700773700612.asia-south1.run.app
 
 ## Have you completed (deployed) your project?
 

@@ -109,7 +109,38 @@ export const factToWords = (fact: WitnessFact) => {
   }
 };
 
-/** How close you must be to a site for it to count as found. */
+/** How close your locked-in answer must be to count as dead on. */
 export const FOUND_WITHIN_M = 45;
-/** How close you must fly to a witness before they will talk to you. */
-export const WITNESS_WITHIN_M = 30;
+
+/** A perfect answer. Every case is worth this much and no more. */
+export const MAX_POINTS = 1000;
+/** Beyond the ring, the score halves every this many metres. */
+const HALF_LIFE_M = 250;
+
+/**
+ * What an answer this far from the place is worth. Inside the ring is full
+ * marks; after that it falls away fast enough that a guess from the wrong
+ * neighbourhood scores nothing, but a near miss still pays.
+ */
+export const scoreFor = (metres: number): number => {
+  if (metres <= FOUND_WITHIN_M) return MAX_POINTS;
+  const points = Math.round(MAX_POINTS * Math.pow(0.5, (metres - FOUND_WITHIN_M) / HALF_LIFE_M));
+  // a score of 12 reads as a consolation prize; it is not one
+  return points < 25 ? 0 : points;
+};
+
+/** How the answer is put to the player, worst to best. */
+export const verdictFor = (metres: number): string => {
+  if (metres <= FOUND_WITHIN_M) return "Dead on.";
+  if (metres <= 150) return "Near as makes no difference.";
+  if (metres <= 400) return "Close. You were on the right street.";
+  if (metres <= 900) return "Warm. The right corner of the city, at least.";
+  if (metres <= 2000) return "Cold. Not this part of town.";
+  return "Nowhere near.";
+};
+/**
+ * How close you must fly to a witness before they will talk to you. Generous:
+ * hovering a pod onto an exact corner is fiddly, and the game is the finding,
+ * not the parking.
+ */
+export const WITNESS_WITHIN_M = 50;

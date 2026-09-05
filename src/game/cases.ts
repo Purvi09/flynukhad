@@ -2,10 +2,11 @@
 //
 // A case is a real place something happened. You are given a clue with the name
 // taken out, and four people standing on real streets who each know one piece of
-// where it is. Fly to the spot and the case closes.
+// where it is. Fly to where you think it is and lock the answer in; how far off
+// you were is what you are scored on.
 
 import { distance, type CityData } from "@shared/geo";
-import { FOUND_WITHIN_M, type Site, type Turn, type Witness } from "@shared/history";
+import { FOUND_WITHIN_M, scoreFor, type Site, type Turn, type Witness } from "@shared/history";
 import { castWitnesses, fetchHistory } from "../net/api";
 import { placeWitnesses } from "../world/witnesses";
 import { stored } from "../ui/dom";
@@ -78,8 +79,12 @@ export type CaseRun = {
   witnesses: WitnessState[];
   startedAt: number;
   solved: boolean;
-  /** Set when the player gives up rather than finds it. */
+  /** Set when the player gives up rather than answering. */
   surrendered: boolean;
+  /** Where they locked the answer in, and what it cost them to be wrong. */
+  guess: { x: number; y: number } | null;
+  away: number | null;
+  points: number;
 };
 
 export class HistoryGame {
@@ -88,8 +93,10 @@ export class HistoryGame {
   private dealt: Site[] = [];
   private at = -1;
   current: CaseRun | null = null;
-  /** How many cases have been closed by actually finding the place. */
+  /** How many cases were answered inside the ring: dead on. */
   found = 0;
+  /** Points across the whole set. */
+  score = 0;
 
   constructor(private city: CityData) {}
 
@@ -139,6 +146,9 @@ export class HistoryGame {
       startedAt: Date.now(),
       solved: false,
       surrendered: false,
+      guess: null,
+      away: null,
+      points: 0,
     };
     return this.current;
   }
@@ -150,6 +160,7 @@ export class HistoryGame {
     this.at = -1;
     this.current = null;
     this.found = 0;
+    this.score = 0;
   }
 
   /** Mark a witness as having told what they know, which unlocks the next. */
@@ -162,25 +173,26 @@ export class HistoryGame {
     if (run.witnesses[index + 1]) run.witnesses[index + 1].unlocked = true;
   }
 
-  /** Has the player flown close enough to the answer? */
-  checkFound(x: number, y: number): boolean {
+  /**
+   * Lock this spot in as the answer. Closes the case whether or not it is
+   * right — being sure and wrong is the risk the game is made of.
+   */
+  lockIn(x: number, y: number): CaseRun | null {
     const run = this.current;
-    if (!run || run.solved) return false;
-    if (distance(x, y, run.site.x, run.site.y) > FOUND_WITHIN_M) return false;
+    if (!run || run.solved) return null;
+    const away = distance(x, y, run.site.x, run.site.y);
+    run.guess = { x, y };
+    run.away = away;
+    run.points = scoreFor(away);
     run.solved = true;
-    this.found += 1;
-    return true;
+    this.score += run.points;
+    if (away <= FOUND_WITHIN_M) this.found += 1;
+    return run;
   }
 
   giveUp() {
     if (!this.current || this.current.solved) return;
     this.current.solved = true;
     this.current.surrendered = true;
-  }
-
-  /** How far, and which way, the answer is. Only shown once the case is over. */
-  distanceTo(x: number, y: number) {
-    if (!this.current) return null;
-    return distance(x, y, this.current.site.x, this.current.site.y);
   }
 }

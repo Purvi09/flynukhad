@@ -16,12 +16,13 @@ export type Intent = {
   boost: boolean;
 };
 
-export type Action = "read" | "leave" | "chat" | "menu" | "mute" | "map" | "photo" | "help" | "history";
+export type Action = "read" | "leave" | "chat" | "menu" | "mute" | "map" | "photo" | "help" | "history" | "lock";
 
 type ActionListener = (action: Action) => void;
 
 const KEY_ACTIONS: Record<string, Action> = {
   KeyE: "read", KeyM: "leave", KeyT: "chat", Escape: "menu", KeyN: "mute", Tab: "map", KeyP: "photo", KeyH: "help", KeyG: "history",
+  KeyL: "lock",
 };
 
 /** Mouse sensitivity, radians per pixel. */

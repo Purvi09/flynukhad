@@ -8,8 +8,9 @@ export const isTouchDevice = () => window.matchMedia("(pointer: coarse)").matche
 
 export class TouchControls {
   readonly root: HTMLElement;
+  private lock: HTMLButtonElement;
 
-  constructor(host: HTMLElement, input: Input, onAction: (action: "read" | "leave" | "help") => void) {
+  constructor(host: HTMLElement, input: Input, onAction: (action: "read" | "leave" | "help" | "lock") => void) {
     const knob = el("div", { class: "knob" });
     const stick = el("div", { class: "stick" }, knob);
     const look = el("div", { class: "look" });
@@ -19,8 +20,11 @@ export class TouchControls {
     const read = el("button", { type: "button", onclick: () => onAction("read") }, "E");
     const leave = el("button", { type: "button", onclick: () => onAction("leave") }, "M");
     const help = el("button", { type: "button", onclick: () => onAction("help") }, "?");
+    // only worth a thumb while a case is open; main.ts shows it then
+    this.lock = el("button", { type: "button", onclick: () => onAction("lock") }, "L");
+    this.lock.style.display = "none";
 
-    this.root = el("div", { class: "touch" }, stick, look, el("div", { class: "buttons" }, help, leave, read, boost, rise, dive));
+    this.root = el("div", { class: "touch" }, stick, look, el("div", { class: "buttons" }, help, this.lock, leave, read, boost, rise, dive));
     host.append(this.root);
 
     // the stick: pointer position relative to the centre gives thrust/strafe
@@ -70,6 +74,9 @@ export class TouchControls {
     hold(dive, () => input.setTouch({ rise: -1 }), () => input.setTouch({ rise: 0 }));
     hold(boost, () => input.setTouch({ boost: true }), () => input.setTouch({ boost: false }));
   }
+
+  /** The lock button only means anything while a case is open. */
+  setLock(show: boolean) { this.lock.style.display = show ? "" : "none"; }
 
   remove() { this.root.remove(); }
 }

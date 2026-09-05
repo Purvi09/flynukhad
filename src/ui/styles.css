@@ -410,6 +410,9 @@ textarea.field { resize: none; min-height: 120px; line-height: 1.5; }
   text-shadow: 0 1px 6px rgba(0,0,0,0.6);
 }
 .hud .keys div { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+/* only listed while a case is open, so it reads as this case's key */
+.hud .keys .key-lock { color: var(--rose); font-weight: 600; }
+.hud .keys .key-lock kbd { border-color: rgba(232,149,174,0.6); color: var(--rose); }
 .hud .status {
   position: absolute;
   left: 50%; top: 18px;
@@ -468,6 +471,12 @@ textarea.field { resize: none; min-height: 120px; line-height: 1.5; }
   place-items: center;
   padding: 20px;
   backdrop-filter: blur(3px);
+}
+.dim.dim--answer {
+  /* the reveal is happening behind this, so barely dim it and sit out of the way */
+  background: linear-gradient(to bottom, rgba(4,8,16,0) 40%, rgba(4,8,16,0.6) 100%);
+  backdrop-filter: none;
+  place-items: end center;
 }
 .panel {
   width: min(520px, 100%);
@@ -594,11 +603,41 @@ textarea.field { resize: none; min-height: 120px; line-height: 1.5; }
   font-family: var(--serif); font-size: 19px; line-height: 1.55;
 }
 .case-answer h2 { margin: 6px 0 8px; color: var(--rose); }
+.case-answer .panel-note {
+  margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: rgba(247,241,231,0.55);
+}
 .case-verdict {
   margin: 0; font-family: var(--mono);
   font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold);
 }
 .case-summary { margin: 0 0 12px; font-size: 14.5px; line-height: 1.6; color: rgba(247,241,231,0.75); }
+
+/* what a locked-in answer was worth */
+.tally {
+  display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap;
+  padding: 12px 14px; margin: 0 0 12px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: rgba(247,241,231,0.04);
+}
+.tally-away b, .tally-points b { font-size: 22px; font-weight: 600; }
+.tally-away b { color: var(--gold); }
+.tally-points { margin-left: auto; text-align: right; }
+.tally-points b { color: var(--rose); }
+.tally-points--none b { color: rgba(247,241,231,0.4); }
+.tally span {
+  display: block; margin-top: 2px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.13em;
+  text-transform: uppercase; color: rgba(247,241,231,0.5);
+}
+
+/* the key that closes a case */
+.case-lock {
+  margin: 0; padding: 10px 12px;
+  border: 1px solid rgba(232,149,174,0.35); border-radius: 12px;
+  background: rgba(232,149,174,0.07);
+  font-size: 13.5px; line-height: 1.6;
+}
+.case-lock span { color: rgba(247,241,231,0.65); }
 
 .witnesses { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 8px; }
 .witness {
@@ -615,6 +654,51 @@ textarea.field { resize: none; min-height: 120px; line-height: 1.5; }
 .witness-stage {
   font-family: var(--mono);
   font-size: 9.5px; letter-spacing: 0.13em; text-transform: uppercase; color: var(--gold);
+}
+
+/* opening the file: the wait, told as the first scene of the case */
+.panel.opening { width: min(520px, 100%); }
+.panel.opening h2 { margin: 2px 0 2px; font-size: 26px; }
+.panel.opening .panel-note {
+  margin: 0; font-size: 13px; line-height: 1.6; color: rgba(247,241,231,0.5);
+}
+.opening-bar {
+  height: 2px; border-radius: 2px; overflow: hidden;
+  background: rgba(247,241,231,0.12);
+}
+.opening-fill {
+  display: block; height: 100%; width: 12%;
+  background: linear-gradient(90deg, var(--gold), var(--rose));
+  transition: width 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.steps { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 11px; }
+.steps .step {
+  display: grid; grid-template-columns: 16px 1fr; gap: 11px; align-items: start;
+  transition: opacity 400ms ease;
+}
+.steps .step b { display: block; font-size: 15px; font-weight: 600; }
+.steps .step-line {
+  display: block; margin-top: 2px;
+  font-family: var(--serif); font-size: 13.5px; font-style: italic;
+  color: rgba(247,241,231,0.6);
+}
+.steps .step-mark {
+  width: 10px; height: 10px; margin-top: 5px; border-radius: 50%;
+  border: 1px solid rgba(247,241,231,0.3);
+}
+.step--pending { opacity: 0.35; }
+.step--pending .step-line { display: none; }
+.step--live .step-mark {
+  border-color: var(--rose); background: var(--rose);
+  animation: step-pulse 1.4s ease-in-out infinite;
+}
+.step--live b { color: var(--rose); }
+.step--done { opacity: 0.5; }
+.step--done .step-mark { border-color: var(--gold); background: var(--gold); }
+.step--done .step-line { display: none; }
+@keyframes step-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232,149,174,0.5); }
+  50% { box-shadow: 0 0 0 7px rgba(232,149,174,0); }
 }
 
 /* talking to one of them */

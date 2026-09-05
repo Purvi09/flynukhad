@@ -185,6 +185,7 @@ export const showHelp = (host: Host, options: {
       el("kbd", {}, "M"), el("span", {}, "leave a memory where you are"),
       el("kbd", {}, "T"), el("span", {}, "city chat"),
       el("kbd", {}, "G"), el("span", {}, "the city's history, and who remembers it"),
+      el("kbd", {}, "L"), el("span", {}, "lock this spot in as your answer to the case"),
       el("kbd", {}, "P"), el("span", {}, "the street today, where you are"),
       el("kbd", {}, "Scroll"), el("span", {}, "camera distance"),
       el("kbd", {}, "Esc"), el("span", {}, "release the mouse / this menu"),
