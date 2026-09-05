@@ -122,6 +122,34 @@ export const cityscape = (): { root: HTMLCanvasElement; stop: () => void } => {
     speed: 4 + r() * 6,
   }));
 
+  /**
+   * The rows as drawn: the same buildings, shortened to fit under the copy.
+   * Recomputed only when the scale actually changes, not every frame.
+   */
+  let backFit = back;
+  let frontFit = front;
+  let fittedAt = -1;
+
+  /** The tallest a building can be before scaling: body plus a pitched roof. */
+  const TALLEST = 256 + 26;
+
+  const fitSkyline = (pavementTop: number) => {
+    // `.boot--hero` keeps padding-bottom: min(42vh, 420px) clear for the street,
+    // so the lowest line of copy can never sit below this.
+    const copyBottom = height - Math.min(height * 0.42, 420);
+    const room = pavementTop - (copyBottom + 18);
+    const scale = Math.max(0.5, Math.min(1, room / TALLEST));
+    if (Math.abs(scale - fittedAt) < 0.005) return;
+    fittedAt = scale;
+    const shorten = (row: Building[]) => scale >= 0.999 ? row : row.map((b) => {
+      const h = b.h * scale;
+      // fewer storeys rather than squashed ones
+      return { ...b, h, rows: Math.max(2, Math.round((h - 46) / 44)) };
+    });
+    backFit = shorten(back);
+    frontFit = shorten(front);
+  };
+
   let width = 0;
   let height = 0;
   let dpr = 1;
@@ -474,6 +502,13 @@ export const cityscape = (): { root: HTMLCanvasElement; stop: () => void } => {
     }
 
     // ---- the two rows of buildings, at different speeds
+    //
+    // The copy is centred in the space `.boot--hero` reserves above the street,
+    // so the skyline gets whatever is left and no more. Without this the two
+    // heights are set independently and merely happen to miss each other — on a
+    // short window they do not, and the closing line ends up over a roof.
+    fitSkyline(pavementTop);
+
     const drawRow = (row: Building[], scroll: number, baseY: number, alpha: number) => {
       const off = ((scroll % STRIP) + STRIP) % STRIP;
       for (let pass = 0; pass <= Math.ceil(width / STRIP) + 1; pass++) {
@@ -485,8 +520,8 @@ export const cityscape = (): { root: HTMLCanvasElement; stop: () => void } => {
       }
     };
 
-    drawRow(back, 0, pavementTop + 12, 0.5);
-    drawRow(front, 0, pavementTop, 1);
+    drawRow(backFit, 0, pavementTop + 12, 0.5);
+    drawRow(frontFit, 0, pavementTop, 1);
 
     // ---- pavement and road
     ctx.fillStyle = PAVEMENT;

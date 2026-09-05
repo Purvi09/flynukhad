@@ -255,6 +255,12 @@ const startSession = (
       at: { x: pod.position.x, y: pod.position.z },
       onGiveUp: () => { game.giveUp(); witnessMarks.clear(); showAnswer(); openPanel(() => openCase()); },
       onNext: () => { void nextCase(); },
+      onLeave: () => {
+        game.leave();
+        witnessMarks.clear();
+        hideAnswer();
+        hud.toast("Back to flying. Press G whenever you want another case.", false, 5000);
+      },
       onClose: dismiss,
     });
   };

@@ -190,6 +190,14 @@ export class HistoryGame {
     return run;
   }
 
+  /**
+   * Stop playing, without answering. The set is kept where it is: pressing G
+   * again deals the next case rather than starting the city over.
+   */
+  leave() {
+    this.current = null;
+  }
+
   giveUp() {
     if (!this.current || this.current.solved) return;
     this.current.solved = true;

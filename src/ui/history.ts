@@ -156,6 +156,8 @@ export const showCase = (host: Host, run: CaseRun, options: {
   at: { x: number; y: number };
   onGiveUp: () => void;
   onNext: () => void;
+  /** Put the whole thing down and go back to flying. */
+  onLeave: () => void;
   onClose: () => void;
 }) => {
   const { site } = run;
@@ -230,6 +232,9 @@ export const showCase = (host: Host, run: CaseRun, options: {
             close();
           } }, "I can't find it")
           : null,
+        // the way out of the game entirely, back to just flying the city
+        el("button", { class: "btn small ghost quiet", type: "button", onclick: () => { options.onLeave(); close(); } },
+          "Leave the game"),
       ),
       solved
         ? el("button", { class: "btn small primary", type: "button", onclick: () => { options.onNext(); close(); } },
